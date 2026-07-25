@@ -8,6 +8,13 @@ import { logger } from './utils/logger';
 import authRoutes from './routes/auth';
 import './types'; // extend Request type globally
 
+import ownerStoreRoutes from './routes/owner/store';
+import ownerItemsRoutes from './routes/owner/items';
+import storesRoutes from './routes/stores';
+
+
+
+
 const app = express();
 
 app.set('trust proxy', 1);
@@ -25,6 +32,13 @@ app.use(cookieParser());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/owner/store', ownerStoreRoutes);
+app.use('/api/owner/items', ownerItemsRoutes);
+app.use('/api/stores', storesRoutes);
+
+
+
+
 
 app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
