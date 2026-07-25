@@ -11,7 +11,7 @@ import './types'; // extend Request type globally
 import ownerStoreRoutes from './routes/owner/store';
 import ownerItemsRoutes from './routes/owner/items';
 import storesRoutes from './routes/stores';
-
+import customerCartRoutes from './routes/customer/cart';
 
 
 
@@ -35,7 +35,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/owner/store', ownerStoreRoutes);
 app.use('/api/owner/items', ownerItemsRoutes);
 app.use('/api/stores', storesRoutes);
-
+app.use('/api/customer/cart', customerCartRoutes);
 
 
 
