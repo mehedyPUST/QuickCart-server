@@ -13,8 +13,13 @@ const envSchema = z.object({
     GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID is required'),
     GOOGLE_CLIENT_SECRET: z.string().min(1, 'GOOGLE_CLIENT_SECRET is required'),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-    RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
-    EMAIL_FROM: z.string().default('QuickCart <noreply@quickcart.com>'),
+
+    // SMTP / Nodemailer settings
+    SMTP_HOST: z.string().default('smtp.gmail.com'),
+    SMTP_PORT: z.string().default('587'),
+    SMTP_USER: z.string().min(1, 'SMTP_USER is required'),
+    SMTP_PASS: z.string().min(1, 'SMTP_PASS is required'),
+    EMAIL_FROM: z.string().min(1, 'EMAIL_FROM is required'),
 });
 
 export const env = envSchema.parse(process.env);
