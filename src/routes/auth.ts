@@ -389,4 +389,47 @@ router.get('/me', authenticate, async (req: Request, res: Response) => {
     }
 });
 
+// POST /api/auth/resend-verification
+router.post('/resend-verification', async (req: Request, res: Response) => {
+    try {
+        const { email } = z.object({ email: z.string().email() }).parse(req.body);
+
+        const db = getDB();
+        const users = db.collection('users');
+        const user = await users.findOne({ email: email.toLowerCase() });
+
+        if (!user) {
+            // Don't reveal if email doesn't exist
+            return res.json({ message: 'If the email is registered and not verified, a new code has been sent.' });
+        }
+
+        if (user.emailVerified) {
+            return res.json({ message: 'Email already verified. You can log in.' });
+        }
+
+        // Generate new OTP and expiry
+        const otp = generateOTP();
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        await users.updateOne(
+            { _id: user._id },
+            { $set: { verificationOtp: { code: otp, expiresAt: otpExpiresAt } } }
+        );
+
+        await sendEmail({
+            to: email,
+            subject: 'Verify your email - QuickCart',
+            html: `<p>Your new verification code is: <strong>${otp}</strong></p><p>Expires in 10 minutes.</p>`,
+        });
+
+        res.json({ message: 'If the email is registered and not verified, a new code has been sent.' });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ message: 'Invalid email' });
+        }
+        logger.error(error, 'Resend verification error');
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 export default router;
