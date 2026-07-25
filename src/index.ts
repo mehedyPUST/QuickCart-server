@@ -14,6 +14,9 @@ import storesRoutes from './routes/stores';
 import customerCartRoutes from './routes/customer/cart';
 import customerOrdersRoutes from './routes/customer/orders';
 import webhookRoutes from './routes/webhooks';
+import ownerOrdersRoutes from './routes/owner/orders';
+
+
 
 const app = express();
 
@@ -40,7 +43,7 @@ app.use('/api/owner/items', ownerItemsRoutes);
 app.use('/api/stores', storesRoutes);
 app.use('/api/customer/cart', customerCartRoutes);
 app.use('/api/customer/orders', customerOrdersRoutes);
-
+app.use('/api/owner/orders', ownerOrdersRoutes);
 // Health check
 app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
