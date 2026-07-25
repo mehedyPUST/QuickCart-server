@@ -1,23 +1,8 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { env } from '../config/env';
 import { logger } from './logger';
 
-const transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: Number(env.SMTP_PORT) || 587,
-    secure: false,
-    auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS,
-    },
-    tls: {
-        rejectUnauthorized: false,
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
-    family: 4,
-} as any); // bypass TS overload issue
+const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
 interface SendEmailOptions {
     to: string;
@@ -26,16 +11,33 @@ interface SendEmailOptions {
 }
 
 export async function sendEmail({ to, subject, html }: SendEmailOptions): Promise<void> {
+    // DEV: redirect all emails to your test address
+    const recipient = env.DEV_EMAIL_OVERRIDE || to;
+    const finalSubject = env.DEV_EMAIL_OVERRIDE
+        ? `[To: ${to}] ${subject}`
+        : subject;
+
+    if (!resend) {
+        logger.warn(`[DEV EMAIL] To: ${recipient}, Subject: ${finalSubject}`);
+        logger.warn(html);
+        return;
+    }
+
     try {
-        const info = await transporter.sendMail({
+        const { error } = await resend.emails.send({
             from: env.EMAIL_FROM,
-            to,
-            subject,
+            to: recipient,
+            subject: finalSubject,
             html,
         });
-        logger.info(`Email sent to ${to} (ID: ${info.messageId})`);
+
+        if (error) {
+            logger.error(error, `Failed to send email to ${recipient}`);
+            return;
+        }
+
+        logger.info(`Email sent to ${recipient} (original: ${to})`);
     } catch (error) {
-        logger.error(error, `Failed to send email to ${to}`);
-        // OTP is still visible in logs – do not throw
+        logger.error(error, `Email error for ${recipient}`);
     }
 }
