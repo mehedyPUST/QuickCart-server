@@ -27,7 +27,7 @@ export async function sendEmail({ to, subject, html }: SendEmailOptions): Promis
         });
         logger.info(`Email sent to ${to}`);
     } catch (error) {
-        logger.error(`Failed to send email to ${to}`, error);
+        logger.error(error, `Failed to send email to ${to}`);
         // In production you might want to throw, but for OTP we can continue
     }
 }

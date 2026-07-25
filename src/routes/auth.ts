@@ -11,10 +11,10 @@ import { logger } from '../utils/logger';
 import { authenticate } from '../middleware/auth';
 import passport from '../config/passport';
 import { ObjectId } from 'mongodb';
+import type { UserRole } from '../types';
 
 const router = Router();
 
-// --- Zod Schemas ---
 const registerSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8),
@@ -41,8 +41,7 @@ const resetPasswordSchema = z.object({
     newPassword: z.string().min(8),
 });
 
-// Helper to set JWT cookies
-function setTokenCookies(res: Response, userId: string, role: string) {
+function setTokenCookies(res: Response, userId: string, role: UserRole) {
     const payload = { userId, role };
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
@@ -51,21 +50,19 @@ function setTokenCookies(res: Response, userId: string, role: string) {
         httpOnly: true,
         secure: env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 15 * 60 * 1000, // 15 min
+        maxAge: 15 * 60 * 1000,
     });
 
     res.cookie('refresh_token', refreshToken, {
         httpOnly: true,
         secure: env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        path: '/api/auth/refresh', // only sent to refresh endpoint
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/api/auth/refresh',
     });
 
-    return refreshToken; // returned so we can store hashed version
+    return refreshToken;
 }
-
-// ---- ROUTES ----
 
 // POST /api/auth/register
 router.post('/register', async (req: Request, res: Response) => {
@@ -75,7 +72,6 @@ router.post('/register', async (req: Request, res: Response) => {
         const db = getDB();
         const users = db.collection('users');
 
-        // Check if email exists
         const existing = await users.findOne({ email: email.toLowerCase() });
         if (existing) {
             return res.status(409).json({ message: 'Email already registered' });
@@ -83,18 +79,15 @@ router.post('/register', async (req: Request, res: Response) => {
 
         const passwordHash = await bcrypt.hash(password, 12);
         const otp = generateOTP();
-        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
         const newUser = {
             email: email.toLowerCase(),
             passwordHash,
             role,
-            name: email.split('@')[0], // temporary name
+            name: email.split('@')[0],
             emailVerified: false,
-            verificationOtp: {
-                code: otp,
-                expiresAt: otpExpiresAt,
-            },
+            verificationOtp: { code: otp, expiresAt: otpExpiresAt },
             isActive: true,
             googleId: null,
             avatar: null,
@@ -105,7 +98,6 @@ router.post('/register', async (req: Request, res: Response) => {
 
         await users.insertOne(newUser);
 
-        // Send OTP email
         await sendEmail({
             to: email,
             subject: 'Verify your email - QuickCart',
@@ -115,9 +107,9 @@ router.post('/register', async (req: Request, res: Response) => {
         res.status(201).json({ message: 'Registration successful. Please check your email for verification code.' });
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ message: 'Validation error', errors: error.errors });
+            return res.status(400).json({ message: 'Validation error', errors: error.issues });
         }
-        logger.error(error);
+        logger.error(error, 'Register error');
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -143,16 +135,12 @@ router.post('/verify-email', async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Invalid or expired OTP' });
         }
 
-        // Mark as verified and clear OTP
         await users.updateOne(
             { _id: user._id },
             { $set: { emailVerified: true }, $unset: { verificationOtp: '' } }
         );
 
-        // Generate tokens and set cookies
-        const refreshToken = setTokenCookies(res, user._id.toString(), user.role);
-
-        // Store hashed refresh token
+        const refreshToken = setTokenCookies(res, user._id.toString(), user.role as UserRole);
         await users.updateOne(
             { _id: user._id },
             { $set: { refreshToken: hashToken(refreshToken) } }
@@ -161,9 +149,9 @@ router.post('/verify-email', async (req: Request, res: Response) => {
         res.json({ message: 'Email verified successfully', user: { _id: user._id, email: user.email, role: user.role } });
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ message: 'Validation error', errors: error.errors });
+            return res.status(400).json({ message: 'Validation error', errors: error.issues });
         }
-        logger.error(error);
+        logger.error(error, 'Verify email error');
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -189,10 +177,7 @@ router.post('/login', async (req: Request, res: Response) => {
             return res.status(401).json({ message: 'Invalid email or password' });
         }
 
-        // Generate tokens
-        const refreshToken = setTokenCookies(res, user._id.toString(), user.role);
-
-        // Store hashed refresh token
+        const refreshToken = setTokenCookies(res, user._id.toString(), user.role as UserRole);
         await users.updateOne(
             { _id: user._id },
             { $set: { refreshToken: hashToken(refreshToken) } }
@@ -201,9 +186,9 @@ router.post('/login', async (req: Request, res: Response) => {
         res.json({ message: 'Login successful', user: { _id: user._id, email: user.email, role: user.role } });
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ message: 'Validation error', errors: error.errors });
+            return res.status(400).json({ message: 'Validation error', errors: error.issues });
         }
-        logger.error(error);
+        logger.error(error, 'Login error');
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -231,13 +216,11 @@ router.post('/refresh', async (req: Request, res: Response) => {
             return res.status(401).json({ message: 'Invalid session' });
         }
 
-        // Verify hashed token matches
         if (user.refreshToken !== hashToken(token)) {
             return res.status(401).json({ message: 'Token reuse detected' });
         }
 
-        // Rotate tokens
-        const newRefreshToken = setTokenCookies(res, user._id.toString(), user.role);
+        const newRefreshToken = setTokenCookies(res, user._id.toString(), user.role as UserRole);
         await users.updateOne(
             { _id: user._id },
             { $set: { refreshToken: hashToken(newRefreshToken) } }
@@ -245,7 +228,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
 
         res.json({ message: 'Tokens refreshed' });
     } catch (error) {
-        logger.error(error);
+        logger.error(error, 'Refresh token error');
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -263,7 +246,7 @@ router.post('/logout', authenticate, async (req: Request, res: Response) => {
         res.clearCookie('refresh_token', { path: '/api/auth/refresh' });
         res.json({ message: 'Logged out' });
     } catch (error) {
-        logger.error(error);
+        logger.error(error, 'Logout error');
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -278,7 +261,6 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
         const user = await users.findOne({ email: email.toLowerCase() });
 
         if (!user) {
-            // Don't reveal if email exists
             return res.json({ message: 'If that email exists, a reset code has been sent.' });
         }
 
@@ -299,9 +281,9 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
         res.json({ message: 'If that email exists, a reset code has been sent.' });
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ message: 'Validation error', errors: error.errors });
+            return res.status(400).json({ message: 'Validation error', errors: error.issues });
         }
-        logger.error(error);
+        logger.error(error, 'Forgot password error');
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -337,14 +319,14 @@ router.post('/reset-password', async (req: Request, res: Response) => {
         res.json({ message: 'Password reset successfully. You can now log in.' });
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ message: 'Validation error', errors: error.errors });
+            return res.status(400).json({ message: 'Validation error', errors: error.issues });
         }
-        logger.error(error);
+        logger.error(error, 'Reset password error');
         res.status(500).json({ message: 'Server error' });
     }
 });
 
-// Google OAuth routes (unchanged from before)
+// Google OAuth
 router.get('/google', passport.authenticate('google', { session: false, scope: ['profile', 'email'] }));
 
 router.get(
@@ -353,7 +335,7 @@ router.get(
     async (req, res) => {
         try {
             const user = req.user as any;
-            const refreshToken = setTokenCookies(res, user._id.toString(), user.role);
+            const refreshToken = setTokenCookies(res, user._id.toString(), user.role as UserRole);
 
             const db = getDB();
             await db.collection('users').updateOne(
@@ -364,7 +346,7 @@ router.get(
             const redirectUrl = user.role === 'owner' ? `${env.CLIENT_URL}/owner/dashboard` : `${env.CLIENT_URL}/dashboard`;
             res.redirect(redirectUrl);
         } catch (error) {
-            logger.error(error);
+            logger.error(error, 'Google callback error');
             res.redirect(`${env.CLIENT_URL}/login?error=server`);
         }
     }

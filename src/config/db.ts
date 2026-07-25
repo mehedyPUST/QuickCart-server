@@ -15,7 +15,7 @@ export async function connectDB(): Promise<Db> {
         logger.info('Connected to MongoDB');
         return db;
     } catch (error) {
-        logger.error('Failed to connect to MongoDB', error);
+        logger.error(error, 'Failed to connect to MongoDB');
         process.exit(1);
     }
 }

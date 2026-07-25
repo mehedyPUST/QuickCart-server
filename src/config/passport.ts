@@ -1,5 +1,6 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import { ObjectId } from 'mongodb';
 import { env } from './env';
 import { getDB } from './db';
 import { logger } from '../utils/logger';
@@ -9,7 +10,7 @@ passport.use(
         {
             clientID: env.GOOGLE_CLIENT_ID,
             clientSecret: env.GOOGLE_CLIENT_SECRET,
-            callbackURL: `${env.BACKEND_URL}/api/auth/google/callback`, // backend URL, not client
+            callbackURL: `${env.BACKEND_URL}/api/auth/google/callback`,
             scope: ['profile', 'email'],
         },
         async (_accessToken, _refreshToken, profile, done) => {
@@ -17,10 +18,10 @@ passport.use(
                 const db = getDB();
                 const users = db.collection('users');
 
-                // Check if user already exists by Google ID
+                // Check by Google ID
                 const existingUser = await users.findOne({ googleId: profile.id });
                 if (existingUser) {
-                    return done(null, existingUser);
+                    return done(null, existingUser as any);
                 }
 
                 const email = profile.emails?.[0]?.value;
@@ -28,10 +29,9 @@ passport.use(
                     return done(new Error('No email returned from Google'));
                 }
 
-                // Check if email already registered (without Google)
+                // Check by email
                 const emailUser = await users.findOne({ email });
                 if (emailUser) {
-                    // Link Google ID to existing account
                     await users.updateOne(
                         { _id: emailUser._id },
                         {
@@ -42,17 +42,17 @@ passport.use(
                         }
                     );
                     const updatedUser = await users.findOne({ _id: emailUser._id });
-                    return done(null, updatedUser);
+                    return done(null, updatedUser as any);
                 }
 
-                // Create brand new user
+                // Create new user
                 const newUser = {
                     email,
                     googleId: profile.id,
                     name: profile.displayName,
                     avatar: profile.photos?.[0]?.value || null,
-                    role: 'customer', // default role for Google sign-ups
-                    emailVerified: true, // Google already verified
+                    role: 'customer',
+                    emailVerified: true,
                     isActive: true,
                     passwordHash: null,
                     refreshToken: null,
@@ -60,16 +60,15 @@ passport.use(
                 };
 
                 const result = await users.insertOne(newUser);
-                return done(null, { ...newUser, _id: result.insertedId });
+                return done(null, { ...newUser, _id: result.insertedId } as any);
             } catch (error) {
-                logger.error('Google OAuth error:', error);
+                logger.error(error, 'Google OAuth error');
                 return done(error as Error);
             }
         }
     )
 );
 
-// Not using sessions (JWT instead), but Passport expects serialize/deserialize
 passport.serializeUser((user: any, done) => {
     done(null, user._id.toString());
 });
@@ -77,8 +76,8 @@ passport.serializeUser((user: any, done) => {
 passport.deserializeUser(async (id: string, done) => {
     try {
         const db = getDB();
-        const user = await db.collection('users').findOne({ _id: id });
-        done(null, user);
+        const user = await db.collection('users').findOne({ _id: new ObjectId(id) });
+        done(null, user as any);
     } catch (err) {
         done(err);
     }
