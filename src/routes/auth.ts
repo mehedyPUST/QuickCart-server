@@ -352,4 +352,23 @@ router.get(
     }
 );
 
+
+
+
+// GET /api/auth/me
+router.get('/me', authenticate, async (req: Request, res: Response) => {
+    try {
+        const db = getDB();
+        const user = await db.collection('users').findOne(
+            { _id: new ObjectId(req.user!.userId) },
+            { projection: { passwordHash: 0, refreshToken: 0, verificationOtp: 0, resetOtp: 0 } }
+        );
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        res.json({ user });
+    } catch (error) {
+        logger.error(error, 'Get me error');
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 export default router;
