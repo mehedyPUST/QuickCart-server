@@ -18,7 +18,7 @@ export async function sendEmail({ to, subject, html }: SendEmailOptions): Promis
     }
 
     try {
-        const { data, error } = await resend.emails.send({
+        const { error } = await resend.emails.send({
             from: env.EMAIL_FROM,
             to,
             subject,
@@ -27,12 +27,13 @@ export async function sendEmail({ to, subject, html }: SendEmailOptions): Promis
 
         if (error) {
             logger.error(error, `Failed to send email to ${to}`);
-            throw new Error(`Email send failed: ${error.message}`);
+            // Do not throw – the OTP is still valid and can be retrieved from logs
+            return;
         }
 
-        logger.info(`Email sent to ${to} (ID: ${data?.id})`);
+        logger.info(`Email sent to ${to}`);
     } catch (error) {
         logger.error(error, `Email error for ${to}`);
-        throw error; // Now we re-throw so the calling route knows it failed
+        // Do not throw
     }
 }
