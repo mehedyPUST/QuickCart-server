@@ -156,6 +156,32 @@ router.post('/verify-email', async (req: Request, res: Response) => {
     }
 });
 
+
+
+// TEMP: Activate user (dev only)
+router.post('/dev-activate', async (req: Request, res: Response) => {
+    // Only allow in development
+    if (env.NODE_ENV !== 'development') {
+        return res.status(404).end();
+    }
+
+    const { email, secret } = req.body;
+    if (secret !== process.env.DEV_SECRET || !email) {
+        return res.status(400).json({ message: 'Invalid request' });
+    }
+
+    const db = getDB();
+    const result = await db.collection('users').updateOne(
+        { email: email.toLowerCase() },
+        { $set: { isActive: true } }
+    );
+
+    if (result.matchedCount === 0) {
+        return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ message: 'User activated' });
+});
 // POST /api/auth/login
 router.post('/login', async (req: Request, res: Response) => {
     try {
