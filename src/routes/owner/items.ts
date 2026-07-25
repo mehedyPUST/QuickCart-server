@@ -13,20 +13,19 @@ router.use(authorize('owner'));
 const itemSchema = z.object({
     name: z.string().min(1),
     description: z.string().optional(),
-    price: z.number().int().min(1), // cents
+    price: z.number().int().min(1),
     imageUrl: z.string().url().optional().or(z.literal('')),
     category: z.string().min(1),
     inStock: z.boolean().optional(),
     stockQuantity: z.number().int().min(0).optional(),
 });
 
-// GET /api/owner/items - list all items for own store
+// GET /api/owner/items
 router.get('/', async (req: Request, res: Response) => {
     try {
         const db = getDB();
         const store = await db.collection('stores').findOne({ ownerId: new ObjectId(req.user!.userId) });
         if (!store) return res.status(404).json({ message: 'Store not found' });
-
         const items = await db.collection('items').find({ storeId: store._id }).toArray();
         res.json({ items });
     } catch (error) {
@@ -35,7 +34,7 @@ router.get('/', async (req: Request, res: Response) => {
     }
 });
 
-// POST /api/owner/items - add a new item
+// POST /api/owner/items
 router.post('/', async (req: Request, res: Response) => {
     try {
         const data = itemSchema.parse(req.body);
@@ -54,19 +53,16 @@ router.post('/', async (req: Request, res: Response) => {
             stockQuantity: data.stockQuantity || 0,
             createdAt: new Date(),
         };
-
         const result = await db.collection('items').insertOne(item);
         res.status(201).json({ item: { ...item, _id: result.insertedId } });
     } catch (error) {
-        if (error instanceof z.ZodError) {
-            return res.status(400).json({ message: 'Validation error', errors: error.issues });
-        }
+        if (error instanceof z.ZodError) return res.status(400).json({ message: 'Validation error', errors: error.issues });
         logger.error(error, 'Add item error');
         res.status(500).json({ message: 'Server error' });
     }
 });
 
-// PUT /api/owner/items/:id - update an item
+// PUT /api/owner/items/:id
 router.put('/:id', async (req: Request, res: Response) => {
     try {
         const data = itemSchema.partial().parse(req.body);
@@ -74,7 +70,7 @@ router.put('/:id', async (req: Request, res: Response) => {
         const store = await db.collection('stores').findOne({ ownerId: new ObjectId(req.user!.userId) });
         if (!store) return res.status(404).json({ message: 'Store not found' });
 
-        const itemId = new ObjectId(req.params.id);
+        const itemId = new ObjectId(req.params.id as string); // cast to string
         const item = await db.collection('items').findOne({ _id: itemId, storeId: store._id });
         if (!item) return res.status(404).json({ message: 'Item not found' });
 
@@ -90,17 +86,11 @@ router.put('/:id', async (req: Request, res: Response) => {
         } else if (data.inStock !== undefined) {
             updateFields.inStock = data.inStock;
         }
-
-        await db.collection('items').updateOne(
-            { _id: itemId },
-            { $set: updateFields }
-        );
+        await db.collection('items').updateOne({ _id: itemId }, { $set: updateFields });
         const updated = await db.collection('items').findOne({ _id: itemId });
         res.json({ item: updated });
     } catch (error) {
-        if (error instanceof z.ZodError) {
-            return res.status(400).json({ message: 'Validation error', errors: error.issues });
-        }
+        if (error instanceof z.ZodError) return res.status(400).json({ message: 'Validation error', errors: error.issues });
         logger.error(error, 'Update item error');
         res.status(500).json({ message: 'Server error' });
     }
@@ -112,8 +102,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
         const db = getDB();
         const store = await db.collection('stores').findOne({ ownerId: new ObjectId(req.user!.userId) });
         if (!store) return res.status(404).json({ message: 'Store not found' });
-
-        const itemId = new ObjectId(req.params.id);
+        const itemId = new ObjectId(req.params.id as string);
         const result = await db.collection('items').deleteOne({ _id: itemId, storeId: store._id });
         if (result.deletedCount === 0) return res.status(404).json({ message: 'Item not found' });
         res.json({ message: 'Item deleted' });
