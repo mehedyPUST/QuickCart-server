@@ -35,7 +35,7 @@ router.put('/:id/status', async (req: Request, res: Response) => {
         const store = await db.collection('stores').findOne({ ownerId: new ObjectId(req.user!.userId) });
         if (!store) return res.status(404).json({ message: 'Store not found' });
 
-        const orderId = new ObjectId(req.params.id);
+        const orderId = new ObjectId(req.params.id as string);
         const order = await db.collection('orders').findOne({ _id: orderId, storeId: store._id });
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
