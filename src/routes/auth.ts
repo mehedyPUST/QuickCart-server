@@ -156,16 +156,10 @@ router.post('/verify-email', async (req: Request, res: Response) => {
     }
 });
 
-
-
-// TEMP: Activate user (dev only)
+// POST /api/auth/dev-activate — Activate user (secure secret required)
 router.post('/dev-activate', async (req: Request, res: Response) => {
-    // Only allow in development
-    if (env.NODE_ENV !== 'development') {
-        return res.status(404).end();
-    }
-
     const { email, secret } = req.body;
+
     if (secret !== process.env.DEV_SECRET || !email) {
         return res.status(400).json({ message: 'Invalid request' });
     }
@@ -182,6 +176,7 @@ router.post('/dev-activate', async (req: Request, res: Response) => {
 
     res.json({ message: 'User activated' });
 });
+
 // POST /api/auth/login
 router.post('/login', async (req: Request, res: Response) => {
     try {
@@ -377,9 +372,6 @@ router.get(
         }
     }
 );
-
-
-
 
 // GET /api/auth/me
 router.get('/me', authenticate, async (req: Request, res: Response) => {
