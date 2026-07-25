@@ -4,23 +4,22 @@ import { env } from '../config/env';
 import { getDB } from '../config/db';
 import { logger } from '../utils/logger';
 import { ObjectId } from 'mongodb';
-import { sendEmail } from '../utils/email';
 
 const router = Router();
 
-// Stripe webhook – raw body needed for signature verification
-router.post('/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
+// Stripe webhook – raw body already parsed by express.raw in index.ts
+router.post('/stripe', async (req: Request, res: Response) => {
     const sig = req.headers['stripe-signature'] as string;
 
     let event;
     try {
+        // req.body is a Buffer because of express.raw
         event = stripe.webhooks.constructEvent(req.body, sig, env.STRIPE_WEBHOOK_SECRET);
     } catch (err: any) {
         logger.error('Webhook signature verification failed:', err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle the event
     if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
         const { orderId } = session.metadata!;
@@ -32,30 +31,17 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req: Re
             return res.status(404).send('Order not found');
         }
 
-        // Update order status
         await db.collection('orders').updateOne(
             { _id: new ObjectId(orderId) },
             { $set: { paymentStatus: 'paid', status: 'paid' } }
         );
 
-        // Deduct stock atomically
+        // Deduct stock
         for (const item of order.items) {
-            await db.collection('items').updateOne(
-                {
-                    _id: item.itemId,
-                    stockQuantity: { $gte: item.quantity },
-                },
-                {
-                    $inc: { stockQuantity: -item.quantity },
-                    $set: { inStock: { $cond: [{ $gt: ['$stockQuantity', item.quantity] }, true, false] } }, // alternative: just set inStock after
-                }
-            );
-            // simpler: findOneAndUpdate with condition and then update inStock
             await db.collection('items').updateOne(
                 { _id: item.itemId, stockQuantity: { $gte: item.quantity } },
                 { $inc: { stockQuantity: -item.quantity } }
             );
-            // Update inStock based on new quantity
             const updatedItem = await db.collection('items').findOne({ _id: item.itemId });
             if (updatedItem) {
                 await db.collection('items').updateOne(
@@ -65,12 +51,7 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req: Re
             }
         }
 
-        // Send order confirmation email (optional – we'll keep simple)
         logger.info(`Order ${orderId} paid and stock updated`);
-
-        // Send confirmation email to customer (if email available)
-        // const customer = await db.collection('users').findOne({ _id: order.customerId });
-        // if (customer?.email) { ... }
     }
 
     res.json({ received: true });

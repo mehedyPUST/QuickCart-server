@@ -12,7 +12,6 @@ const router = Router();
 router.use(authenticate);
 router.use(authorize('customer'));
 
-// Schema for creating checkout session
 const checkoutSchema = z.object({
     storeId: z.string().min(1),
     items: z.array(z.object({
@@ -21,7 +20,7 @@ const checkoutSchema = z.object({
         price: z.number().int(),
         quantity: z.number().int().min(1),
     })),
-    pickupTime: z.string().datetime(), // ISO 8601
+    pickupTime: z.string().datetime(),
 });
 
 // POST /api/customer/orders/create-checkout-session
@@ -31,7 +30,7 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
         const db = getDB();
         const customerId = new ObjectId(req.user!.userId);
 
-        // Verify store exists and is active
+        // Verify store
         const store = await db.collection('stores').findOne({
             _id: new ObjectId(storeId),
             isActive: true,
@@ -39,22 +38,20 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
         });
         if (!store) return res.status(404).json({ message: 'Store not found or inactive' });
 
-        // Verify all items belong to the store and are in stock
+        // Verify items
         const itemIds = items.map(i => new ObjectId(i.itemId));
         const dbItems = await db.collection('items').find({
             _id: { $in: itemIds },
             storeId: new ObjectId(storeId),
             inStock: true,
         }).toArray();
-
         if (dbItems.length !== items.length) {
-            return res.status(400).json({ message: 'Some items are unavailable or don’t belong to this store' });
+            return res.status(400).json({ message: 'Some items are unavailable' });
         }
 
-        // Calculate subtotal (in cents)
         const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
-        // Create order with status 'pending', paymentStatus 'unpaid'
+        // Create order
         const order = {
             customerId,
             storeId: new ObjectId(storeId),
@@ -72,14 +69,13 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
             createdAt: new Date(),
         };
 
-        const orderResult = await db.collection('orders').insertOne(order);
-        const orderId = orderResult.insertedId.toString();
+        const result = await db.collection('orders').insertOne(order);
+        const orderId = result.insertedId.toString();
 
         // Create Stripe Checkout Session
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             mode: 'payment',
-            customer_email: req.user?.email, // optional if available
             line_items: items.map(i => ({
                 price_data: {
                     currency: 'usd',
@@ -96,9 +92,8 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
             cancel_url: `${env.CLIENT_URL}/checkout/cancel`,
         });
 
-        // Save Stripe session ID on the order
         await db.collection('orders').updateOne(
-            { _id: orderResult.insertedId },
+            { _id: result.insertedId },
             { $set: { stripeSessionId: session.id } }
         );
 
@@ -112,7 +107,7 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
     }
 });
 
-// GET /api/customer/orders – list own orders
+// GET /api/customer/orders
 router.get('/', async (req: Request, res: Response) => {
     try {
         const db = getDB();
