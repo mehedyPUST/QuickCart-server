@@ -12,22 +12,27 @@ interface SendEmailOptions {
 
 export async function sendEmail({ to, subject, html }: SendEmailOptions): Promise<void> {
     if (!resend) {
-        // Development fallback – just log to console
-        logger.info(`[DEV EMAIL] To: ${to}, Subject: ${subject}`);
-        logger.info(html);
+        logger.warn(`[DEV EMAIL] To: ${to}, Subject: ${subject}`);
+        logger.warn(html);
         return;
     }
 
     try {
-        await resend.emails.send({
+        const { data, error } = await resend.emails.send({
             from: env.EMAIL_FROM,
             to,
             subject,
             html,
         });
-        logger.info(`Email sent to ${to}`);
+
+        if (error) {
+            logger.error(error, `Failed to send email to ${to}`);
+            throw new Error(`Email send failed: ${error.message}`);
+        }
+
+        logger.info(`Email sent to ${to} (ID: ${data?.id})`);
     } catch (error) {
-        logger.error(error, `Failed to send email to ${to}`);
-        // In production you might want to throw, but for OTP we can continue
+        logger.error(error, `Email error for ${to}`);
+        throw error; // Now we re-throw so the calling route knows it failed
     }
 }
