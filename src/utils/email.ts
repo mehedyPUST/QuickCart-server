@@ -2,14 +2,10 @@ import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 import { logger } from './logger';
 
-const transporter = nodemailer.createTransport({
-    host: env.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(env.SMTP_PORT) || 587,
-    secure: false,
-    auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS,
-    },
+// Build connection URL to avoid type mismatches
+const smtpUrl = `smtp://${encodeURIComponent(env.SMTP_USER)}:${encodeURIComponent(env.SMTP_PASS)}@${env.SMTP_HOST}:${env.SMTP_PORT || 587}`;
+
+const transporter = nodemailer.createTransport(smtpUrl, {
     tls: {
         rejectUnauthorized: false,
     },
@@ -36,6 +32,6 @@ export async function sendEmail({ to, subject, html }: SendEmailOptions): Promis
         logger.info(`Email sent to ${to} (ID: ${info.messageId})`);
     } catch (error) {
         logger.error(error, `Failed to send email to ${to}`);
-        // Do not throw – OTP is still valid and visible in logs
+        // OTP is still visible in logs – no throw
     }
 }
