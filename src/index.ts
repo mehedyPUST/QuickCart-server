@@ -12,13 +12,17 @@ import ownerStoreRoutes from './routes/owner/store';
 import ownerItemsRoutes from './routes/owner/items';
 import storesRoutes from './routes/stores';
 import customerCartRoutes from './routes/customer/cart';
-
-
+import customerOrdersRoutes from './routes/customer/orders';
+import webhookRoutes from './routes/webhooks';
 
 const app = express();
 
 app.set('trust proxy', 1);
 
+// Stripe webhook needs raw body BEFORE json parsing
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }), webhookRoutes);
+
+// Standard middleware
 app.use(helmet());
 app.use(
     cors({
@@ -26,7 +30,6 @@ app.use(
         credentials: true,
     })
 );
-
 app.use(express.json());
 app.use(cookieParser());
 
@@ -36,14 +39,14 @@ app.use('/api/owner/store', ownerStoreRoutes);
 app.use('/api/owner/items', ownerItemsRoutes);
 app.use('/api/stores', storesRoutes);
 app.use('/api/customer/cart', customerCartRoutes);
+app.use('/api/customer/orders', customerOrdersRoutes);
 
-
-
-
+// Health check
 app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
 });
 
+// Start server
 async function start() {
     await connectDB();
     app.listen(env.PORT, () => {
