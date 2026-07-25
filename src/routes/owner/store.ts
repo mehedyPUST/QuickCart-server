@@ -14,7 +14,6 @@ const storeSchema = z.object({
     name: z.string().min(1),
     description: z.string().optional(),
     address: z.string().min(1),
-    // Fix: Record with string keys, each value is an object
     pickupHours: z.record(z.string(), z.object({
         open: z.string(),
         close: z.string(),
@@ -25,53 +24,18 @@ const storeSchema = z.object({
 
 // GET /api/owner/store
 router.get('/', async (req: Request, res: Response) => {
-    try {
-        const db = getDB();
-        const store = await db.collection('stores').findOne({ ownerId: new ObjectId(req.user!.userId) });
-        if (!store) return res.json({ store: null });
-        res.json({ store });
-    } catch (error) {
-        logger.error(error, 'Get store error');
-        res.status(500).json({ message: 'Server error' });
-    }
+    const db = getDB();
+    const store = await db.collection('stores').findOne({ ownerId: new ObjectId(req.user!.userId) });
+    res.json({ store });
 });
 
-// POST /api/owner/store
-router.post('/', async (req: Request, res: Response) => {
-    try {
-        const data = storeSchema.parse(req.body);
-        const db = getDB();
-        const existing = await db.collection('stores').findOne({ ownerId: new ObjectId(req.user!.userId) });
-        if (existing) return res.status(409).json({ message: 'You already have a store' });
-
-        const store = {
-            ownerId: new ObjectId(req.user!.userId),
-            name: data.name,
-            description: data.description || '',
-            address: data.address,
-            pickupHours: data.pickupHours || {},
-            imageUrl: data.imageUrl || null,
-            isActive: data.isActive !== undefined ? data.isActive : true,
-            status: 'active',
-            createdAt: new Date(),
-        };
-        const result = await db.collection('stores').insertOne(store);
-        res.status(201).json({ store: { ...store, _id: result.insertedId } });
-    } catch (error) {
-        if (error instanceof z.ZodError) return res.status(400).json({ message: 'Validation error', errors: error.issues });
-        logger.error(error, 'Create store error');
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// PUT /api/owner/store
+// PUT /api/owner/store (create or update)
 router.put('/', async (req: Request, res: Response) => {
     try {
         const data = storeSchema.partial().parse(req.body);
         const db = getDB();
         const ownerId = new ObjectId(req.user!.userId);
         const store = await db.collection('stores').findOne({ ownerId });
-        if (!store) return res.status(404).json({ message: 'Store not found' });
 
         const updateFields: any = {};
         if (data.name !== undefined) updateFields.name = data.name;
@@ -81,9 +45,26 @@ router.put('/', async (req: Request, res: Response) => {
         if (data.imageUrl !== undefined) updateFields.imageUrl = data.imageUrl || null;
         if (data.isActive !== undefined) updateFields.isActive = data.isActive;
 
-        if (Object.keys(updateFields).length > 0) {
-            await db.collection('stores').updateOne({ ownerId }, { $set: updateFields });
+        if (store) {
+            if (Object.keys(updateFields).length > 0) {
+                await db.collection('stores').updateOne({ ownerId }, { $set: updateFields });
+            }
+        } else {
+            // Create new store with all required fields
+            const newStore = {
+                ownerId,
+                name: data.name || 'Untitled',
+                description: data.description || '',
+                address: data.address || '',
+                pickupHours: data.pickupHours || {},
+                imageUrl: data.imageUrl || null,
+                isActive: data.isActive !== undefined ? data.isActive : true,
+                status: 'active',
+                createdAt: new Date(),
+            };
+            await db.collection('stores').insertOne(newStore);
         }
+
         const updated = await db.collection('stores').findOne({ ownerId });
         res.json({ store: updated });
     } catch (error) {
