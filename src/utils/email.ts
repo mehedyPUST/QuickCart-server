@@ -11,6 +11,9 @@ interface SendEmailOptions {
 }
 
 export async function sendEmail({ to, subject, html }: SendEmailOptions): Promise<void> {
+    // Debug: log the actual from address being used
+    logger.info(`Attempting to send email from: "${env.EMAIL_FROM}"`);
+
     if (!resend) {
         logger.warn(`[DEV EMAIL] To: ${to}, Subject: ${subject}`);
         logger.warn(html);
@@ -27,13 +30,12 @@ export async function sendEmail({ to, subject, html }: SendEmailOptions): Promis
 
         if (error) {
             logger.error(error, `Failed to send email to ${to}`);
-            // Do not throw – the OTP is still valid and can be retrieved from logs
+            // OTP is still in logs, so we don't throw
             return;
         }
 
         logger.info(`Email sent to ${to}`);
     } catch (error) {
         logger.error(error, `Email error for ${to}`);
-        // Do not throw
     }
 }
