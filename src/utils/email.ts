@@ -5,11 +5,18 @@ import { logger } from './logger';
 const transporter = nodemailer.createTransport({
     host: env.SMTP_HOST || 'smtp.gmail.com',
     port: Number(env.SMTP_PORT) || 587,
-    secure: false, // true for 465, false for others
+    secure: false,
     auth: {
         user: env.SMTP_USER,
         pass: env.SMTP_PASS,
     },
+    tls: {
+        rejectUnauthorized: false,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    family: 4, // Force IPv4
 });
 
 interface SendEmailOptions {
